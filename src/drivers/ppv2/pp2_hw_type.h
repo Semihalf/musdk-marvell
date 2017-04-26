@@ -1822,11 +1822,6 @@ enum mv_pp2x_cos_type {
 	MVPP2_COS_TYPE_DSCP,
 };
 
-enum mv_pp2x_rss_hash_mode {
-	MVPP2_RSS_HASH_2T = 0,
-	MVPP2_RSS_HASH_5T,
-};
-
 struct mv_pp2x_prs_result_info {
 	u32 ri;
 	u32 ri_mask;
