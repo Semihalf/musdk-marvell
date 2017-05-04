@@ -49,7 +49,8 @@
 #define CLS_APP_MAX_NUM_TCS_PER_PORT		4
 #define CLS_APP_FIRST_LOG_PORT_IN_QUEUE		4
 #define CLS_APP_FIRST_MUSDK_IN_QUEUE		0
-#define CLS_APP_PP2_MAX_NUM_QS_PER_TC		1
+#define CLS_APP_PP2_MAX_NUM_QS_PER_TC		4
+#define CLS_APP_PP2_NUM_RSS_KERNEL_TBLS		1
 #define CLS_APP_STR_SIZE_MAX			40
 #define CLS_APP_KEY_SIZE_MAX			37
 #define CLS_APP_PPIO_NAME_MAX			15
@@ -97,6 +98,7 @@ struct glob_arg {
 	int			cli;
 	int			cpus;	/* cpus used for running */
 	int			echo;
+	u32			hash_type;
 	u64			qs_map;
 	int			qs_map_shift;
 	int			num_ports;
@@ -1651,6 +1653,7 @@ static int init_all_modules(void)
 	int			 err;
 	u32			first_inq;
 
+
 	pr_info("Global initializations ...\n");
 
 	err = mv_sys_dma_mem_init(CLS_APP_DMA_MEM_SIZE);
@@ -1681,6 +1684,9 @@ static int init_all_modules(void)
 		pp2_params->ppios[1][2].is_enabled = 0;
 		pp2_params->ppios[1][2].first_inq = first_inq;
 	}
+
+	pp2_params->rss_tbl_reserved_map = (1 << CLS_APP_PP2_NUM_RSS_KERNEL_TBLS) - 1;
+
 	err = pp2_init(pp2_params);
 	if (err)
 		return err;
@@ -1736,6 +1742,8 @@ static int init_local_modules(struct glob_arg *garg)
 			port_params->outqs_params.outqs_params[i].size = MVAPPS_Q_SIZE;
 			port_params->outqs_params.outqs_params[i].weight = 1;
 		}
+		port_params->inqs_params.hash_type = garg->hash_type;
+
 		err = pp2_ppio_init(port_params, &garg->ports_desc[port_index].ppio);
 		if (err)
 			return err;
@@ -2081,17 +2089,18 @@ static void deinit_local(void *arg)
 static void usage(char *progname)
 {
 	printf("\n"
-		"MUSDK cls-test application.\n"
+		"MUSDK cls-demo application.\n"
 		"\n"
 		"Usage: %s OPTIONS\n"
-		"  E.g. %s -i ppio-0:0\n"
+		"  E.g. %s -i eth0\n"
 		"\n"
 		"Mandatory OPTIONS:\n"
 		"\t-i, --interface <eth-interface>\n"
 		"\n"
 		"Optional OPTIONS:\n"
-		"\t-e, --echo	(no argument) activate echo packets\n"
-		"\t--ppio_tag_mode	(no argument)configure ppio_tag_mode parameter\n"
+		"\t-e, --echo			(no argument) activate echo packets\n"
+		"\t-b, --hash_type <none, 2-tuple, 5-tuple> 11\n"
+		"\t--ppio_tag_mode		(no argument)configure ppio_tag_mode parameter\n"
 		"\t--logical_port_params	(no argument)configure logical port parameters\n"
 		"\n", CLS_DBG_NO_PATH(progname), CLS_DBG_NO_PATH(progname)
 		);
@@ -2114,6 +2123,7 @@ static int parse_args(struct glob_arg *garg, int argc, char *argv[])
 		{"help", no_argument, 0, 'h'},
 		{"interface", required_argument, 0, 'i'},
 		{"echo", no_argument, 0, 'e'},
+		{"hash_type", required_argument, 0, 'b'},
 		{"ppio_tag_mode", no_argument, 0, 't'},
 		{"logical_port_params", no_argument, 0, 'g'},
 		{0, 0, 0, 0}
@@ -2123,6 +2133,7 @@ static int parse_args(struct glob_arg *garg, int argc, char *argv[])
 	garg->qs_map = 0xf;
 	garg->qs_map_shift = CLS_APP_MAX_NUM_TCS_PER_PORT;
 	garg->echo = 0;
+	garg->hash_type = PP2_PPIO_HASH_T_2_TUPLE;
 	garg->num_ports = 0;
 	garg->cli = 1;
 
@@ -2132,7 +2143,7 @@ static int parse_args(struct glob_arg *garg, int argc, char *argv[])
 
 	/* every time starting getopt we should reset optind */
 	optind = 0;
-	while ((option = getopt_long(argc, argv, "hi:n:m:", long_options, &long_index)) != -1) {
+	while ((option = getopt_long(argc, argv, "hi:b:etg", long_options, &long_index)) != -1) {
 		switch (option) {
 		case 'h':
 			usage(argv[0]);
@@ -2151,6 +2162,18 @@ static int parse_args(struct glob_arg *garg, int argc, char *argv[])
 			break;
 		case 'e':
 			garg->echo = 1;
+			break;
+		case 'b':
+			if (!strcmp(optarg, "none")) {
+				garg->hash_type = PP2_PPIO_HASH_T_NONE;
+			} else if (!strcmp(optarg, "2-tuple")) {
+				garg->hash_type = PP2_PPIO_HASH_T_2_TUPLE;
+			} else if (!strcmp(optarg, "5-tuple")) {
+				garg->hash_type = PP2_PPIO_HASH_T_5_TUPLE;
+			} else {
+				printf("parsing fail, wrong input for hash\n");
+				return -EINVAL;
+			}
 			break;
 		case 't':
 			ppio_tag_mode = true;

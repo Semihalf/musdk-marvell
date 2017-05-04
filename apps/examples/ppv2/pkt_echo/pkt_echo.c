@@ -92,6 +92,7 @@ static char tx_retry_str[] = "Tx Retry disabled";
 #define PP2_MAX_NUM_TCS_PER_PORT	1
 #define PP2_MAX_NUM_QS_PER_TC		MAX_NUM_CORES
 #define MAX_NUM_QS_PER_CORE		PP2_MAX_NUM_TCS_PER_PORT
+#define PP2_NUM_RSS_KERNEL_TBLS		1
 
 #define DEFAULT_MTU			1500
 #define VLAN_HLEN			4
@@ -916,6 +917,9 @@ static int init_all_modules(void)
 		pp2_params.ppios[1][1].is_enabled = 1;
 		pp2_params.ppios[1][1].first_inq = 0;
 	}
+
+	pp2_params.rss_tbl_reserved_map = (1 << PP2_NUM_RSS_KERNEL_TBLS) - 1;
+
 	if ((err = pp2_init(&pp2_params)) != 0)
 		return err;
 
@@ -1205,6 +1209,11 @@ static int init_local_modules(struct glob_arg *garg)
 			pr_info("Set port ppio-%d:%d MTU to %d\n",
 				garg->ports_desc[port_index].pp_id, garg->ports_desc[port_index].ppio_id, garg->mtu);
 		}
+
+		if (garg->cpus == 1)
+			port_params.inqs_params.hash_type = PP2_PPIO_HASH_T_NONE;
+		else
+			port_params.inqs_params.hash_type = PP2_PPIO_HASH_T_2_TUPLE;
 
 		if ((err = pp2_ppio_enable(garg->ports_desc[port_index].port)) != 0)
 			return err;
