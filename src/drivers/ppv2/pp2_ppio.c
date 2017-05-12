@@ -107,7 +107,11 @@ int pp2_ppio_init(struct pp2_ppio_params *params, struct pp2_ppio **ppio)
 
 void pp2_ppio_deinit(struct pp2_ppio *ppio)
 {
+	struct pp2_port **port;
+
 	pp2_port_close(GET_PPIO_PORT(ppio));
+	port = GET_PPIO_PORT_PTR(ppio_array[ppio->pp2_id][ppio->port_id]);
+	*port = NULL;
 }
 
 int pp2_ppio_enable(struct pp2_ppio *ppio)
