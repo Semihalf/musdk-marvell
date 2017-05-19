@@ -32,6 +32,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <sys/time.h>
 
 #include "mv_std.h"
@@ -82,7 +83,15 @@ static int			num_requests_before_deq = 32;
 static int			num_requests_per_deq = 32;
 static u32			debug_flags;
 
+static bool			running;
 static generic_list		test_db;
+
+static void sigint_h(int sig)
+{
+	printf("\nInterrupted by signal #%d\n", sig);
+	running = false;
+	signal(SIGINT, SIG_DFL);
+}
 
 /** Get rid of path in filename - only for unix-type paths using '/' */
 #define NO_PATH(file_name) (strrchr((file_name), '/') ? \
@@ -588,7 +597,7 @@ static void prepare_requests(EncryptedBlockPtr block, struct sam_session_params 
 static int run_tests(generic_list tests_db)
 {
 	EncryptedBlockPtr block;
-	int i, test, num_tests;
+	int i, test, num_tests, err = 0;
 	int total_enqs, total_deqs, in_process, to_enq, num_enq, to_deq;
 	u16 num;
 	char *test_name;
@@ -604,6 +613,8 @@ static int run_tests(generic_list tests_db)
 	block = generic_list_get_first(tests_db);
 	total_passed = total_errors = 0;
 	for (test = 0; test < num_tests; test++) {
+               if (!running)
+                       break;
 
 		if (test > 0)
 			block = generic_list_get_next(tests_db);
@@ -634,6 +645,9 @@ static int run_tests(generic_list tests_db)
 		while (total_deqs) {
 			to_enq = min(total_enqs, num_requests_before_deq);
 			while (in_process < to_enq) {
+                               if (!running)
+                                       goto sig_exit;
+
 				num_enq = min(num_requests_per_enq, (to_enq - in_process));
 				for (i = 0; i < num_enq; i++) {
 					if (same_bufs) {
@@ -686,8 +700,10 @@ static int run_tests(generic_list tests_db)
 				}
 			}
 		}
+sig_exit:
 		gettimeofday(&tv_end, NULL);
 
+		count -= total_deqs;
 		print_results(test, test_name, count, errors, &tv_start, &tv_end);
 
 		total_errors += errors;
@@ -698,7 +714,7 @@ static int run_tests(generic_list tests_db)
 	printf("SAM tests failed:   %d\n", total_errors);
 	printf("\n");
 
-	return 0;
+	return err;
 }
 
 static void usage(char *progname)
@@ -867,6 +883,8 @@ int main(int argc, char **argv)
 	if (allocate_bufs(cio_params.max_buf_size))
 		goto exit;
 
+	signal(SIGINT, sigint_h);
+	running = true;
 	if (run_tests(test_db))
 		goto exit;
 
